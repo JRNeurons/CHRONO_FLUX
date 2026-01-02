@@ -1,0 +1,28 @@
+CHRONO_DRIFT - Source Available License
+
+Copyright (c) 2025 Jeffrey Rumschlag
+
+Permission is hereby granted, free of charge, to view, fork, and modify this
+software for personal, educational, or non-commercial purposes, subject to
+the following conditions:
+
+1. ATTRIBUTION: You must give appropriate credit to the original author(s)
+   in any derivative work or public discussion of the code.
+
+2. NON-COMMERCIAL: You may not sell, sublicense, or otherwise commercially
+   exploit this software or any derivative works.
+
+3. NO REDISTRIBUTION: You may not publicly host, distribute, or republish
+   this software or substantially similar derivative works, whether modified
+   or unmodified, without explicit written permission from the copyright holder.
+
+4. PERSONAL USE: Private modifications for personal use, learning, or
+   experimentation are permitted.
+
+This software was created with assistance from AI tools (Claude, Gemini).
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
+
+For permissions beyond this license, contact: jrumschl@gmail.com
