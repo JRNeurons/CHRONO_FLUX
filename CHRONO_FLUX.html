@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CHRONO_DRIFT</title>
+    <title>CHRONO_FLUX</title>
     <style>
         body { margin: 0; overflow: hidden; background: #0a0a0a; font-family: 'Courier New', Courier, monospace; cursor: crosshair; }
         canvas { display: block; }
@@ -130,7 +130,7 @@
 <div id="xpContainer"><div id="xpBar"></div></div>
 <div id="ui">
     <div class="top-bar">
-        <div><h1>CHRONO_DRIFT</h1><p>WASD Move | SHIFT Boost | SPACE Slow | LMB Shoot | RMB Nova | P Pause</p></div>
+        <div><h1>CHRONO_FLUX</h1><p>WASD Move | SHIFT Boost | SPACE Slow | LMB Shoot | RMB Nova | P Pause</p></div>
         <div id="levelIndicator">LVL 1</div>
     </div>
     <div style="margin-top: 10px;">
@@ -156,7 +156,7 @@
     <span id="audioBtn" onclick="toggleMute()">[AUDIO ON]</span>
 </div>
 <div id="startOverlay" class="overlay">
-    <h2>CHRONO_DRIFT</h2>
+    <h2>CHRONO_FLUX</h2>
     <div id="difficultySelect" style="margin: 30px 0; display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 600px;">
         <p style="margin-bottom: 15px; font-size: 14px; color: #888;">SELECT DIFFICULTY</p>
         <button class="diff-btn" onclick="startTutorial()" style="background: #2a3a4a; border: 2px solid #00ffcc; padding: 10px 25px; margin: 5px; color: #00ffcc; cursor: pointer; font-family: inherit; font-size: 16px;">ACADEMY (TUTORIAL)</button>
@@ -208,7 +208,7 @@
 <canvas id="gameCanvas"></canvas>
 <script>
 /*
- * CHRONO_DRIFT
+ * CHRONO_FLUX
  * Copyright (c) 2025 Jeffrey Rumschlag
  *
  * Source available for personal/educational use only.
@@ -710,7 +710,7 @@ const bossLabel = document.getElementById('bossLabel');
 const upgradeNotification = document.getElementById('upgradeNotification');
 
 // --- Persistence ---
-const SAVE_KEY = 'CHRONO_DRIFT';  // Bumped version for new progression data
+const SAVE_KEY = 'CHRONO_FLUX';  // Bumped version for new progression data
 let saveData = {
     currency: 0,
     upgrades: { maxHp: 0, magnet: 0, fireRate: 0, force: 0, chronosCap: 0, boostCap: 0, boostRegen: 0, startDamage: 0, xpBonus: 0, startNova: 0 },
@@ -801,7 +801,7 @@ function exportSave() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `CHRONO_DRIFT_save_${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `CHRONO_FLUX_save_${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

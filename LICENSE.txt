@@ -1,4 +1,4 @@
-CHRONO_DRIFT - Source Available License
+CHRONO_FLUX - Source Available License
 
 Copyright (c) 2025 Jeffrey Rumschlag
 
