@@ -224,6 +224,16 @@ const AudioSys = {
     noiseBuffer: null,
     // Asteroid field agitation (1.0 = baseline, higher = more chaotic)
     fieldAgitation: 1.0,
+    // Spatial audio: max pan amount (0.7 = 70% pan, avoids harsh hard-panning)
+    maxPan: 0.7,
+    // Calculate stereo pan from screen x position (-maxPan to +maxPan)
+    // x=0 -> left, x=width -> right, x=width/2 -> center
+    calculatePan: function(x) {
+        if (typeof width === 'undefined' || width <= 0) return 0;
+        // Normalize x to 0-1, then map to -maxPan to +maxPan
+        const normalized = Math.max(0, Math.min(1, x / width));
+        return (normalized * 2 - 1) * this.maxPan;
+    },
 
     initNoiseBuffer: function() {
         if (!this.ctx) return;
@@ -290,7 +300,15 @@ const AudioSys = {
         if (type !== 'hit' && this.lastPlayed[type] && (t - this.lastPlayed[type] < 0.08)) return;
         this.lastPlayed[type] = t;
         const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
-        osc.connect(gain); gain.connect(this.masterGain);
+        // Spatial audio: create panner if x position provided
+        let outputNode = this.masterGain;
+        if (params.x !== undefined) {
+            const panner = this.ctx.createStereoPanner();
+            panner.pan.setValueAtTime(this.calculatePan(params.x), t);
+            panner.connect(this.masterGain);
+            outputNode = panner;
+        }
+        osc.connect(gain); gain.connect(outputNode);
         if (type === 'shoot') {
             const pitch = 180 + Math.random() * 20; osc.type = 'triangle';
             osc.frequency.setValueAtTime(pitch, t); osc.frequency.exponentialRampToValueAtTime(80, t + 0.06);
@@ -353,7 +371,7 @@ const AudioSys = {
             subG.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
 
             sub.connect(subG);
-            subG.connect(this.masterGain);
+            subG.connect(outputNode);  // Route through panner if present
 
             sub.start(t); sub.stop(t + 0.4);
             osc.start(t); osc.stop(t + 0.3);
@@ -410,7 +428,7 @@ const AudioSys = {
             gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
             osc.start(t); osc.stop(t + 0.3);
             const osc2 = this.ctx.createOscillator(); const gain2 = this.ctx.createGain();
-            osc2.connect(gain2); gain2.connect(this.masterGain);
+            osc2.connect(gain2); gain2.connect(outputNode);  // Route through panner if present
             osc2.type = 'sine'; osc2.frequency.setValueAtTime(1320, t);
             gain2.gain.setValueAtTime(0.1, t); gain2.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
             osc2.start(t); osc2.stop(t + 0.2);
@@ -434,20 +452,21 @@ const AudioSys = {
                 const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass';
                 lp.frequency.setValueAtTime(300, t); lp.frequency.exponentialRampToValueAtTime(2000, t + 0.3);
                 const noiseGain = this.ctx.createGain();
-                noise.connect(lp); lp.connect(noiseGain); noiseGain.connect(this.masterGain);
+                noise.connect(lp); lp.connect(noiseGain); noiseGain.connect(outputNode);  // Route through panner if present
                 noiseGain.gain.setValueAtTime(0.25, t); noiseGain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
                 noise.start(t); noise.stop(t + 0.5);
             }
         } else if (type === 'achievement') {
             // Fanfare sound for unlocking difficulty
             const notes = [523.25, 659.25, 783.99, 1046.50];  // C5, E5, G5, C6
+            const fanfareOutput = outputNode;  // Capture for closure
             notes.forEach((freq, i) => {
                 const o = this.ctx.createOscillator();
                 const g = this.ctx.createGain();
                 o.type = 'sine';
                 o.frequency.setValueAtTime(freq, t + i * 0.15);
                 o.connect(g);
-                g.connect(this.masterGain);
+                g.connect(fanfareOutput);  // Route through panner if present
                 g.gain.setValueAtTime(0.2, t + i * 0.15);
                 g.gain.exponentialRampToValueAtTime(0.01, t + i * 0.15 + 0.4);
                 o.start(t + i * 0.15);
@@ -545,19 +564,23 @@ const AudioSys = {
         const freq = notes[Math.floor(Math.random() * notes.length)];
         osc.frequency.setValueAtTime(freq, t);
         mod.frequency.setValueAtTime(freq * (Math.floor(Math.random() * 4) + 1), t);  // Harmonic multiples only
-        
+
         // Scale modulator depth with field agitation (1.0x to 1.3x)
-        const agitationFactor = Math.min(this.fieldAgitation, 10.0);  // Cap at 4x
-        const modDepth = 500 * (1 + (agitationFactor - 1) * 0.5);  // 500 -> 650 at max
+        const agitationFactor = Math.min(this.fieldAgitation, 10.0);  // Cap at 10x
+        const baseRatio = 2.0;
+        const maxRatio = 8.0;
+        const currentRatio = baseRatio + ((agitationFactor - 1) / 9) * (maxRatio - baseRatio);
+
+        const modDepth = freq * currentRatio;
         modGain.gain.setValueAtTime(modDepth, t);
-        
+
         mod.connect(modGain); modGain.connect(osc.frequency);
         osc.connect(gain); gain.connect(this.masterGain);
-        
+
         // Scale note duration with field agitation (extends decay for overlap at high chaos)
         const baseLen = 0.05 + Math.random() * 0.1;  // 0.05-0.15s baseline
         const len = baseLen * (1 + (agitationFactor - 1) * 0.6);  // Up to ~2.8x at max agitation
-        
+
         gain.gain.setValueAtTime(0.15, t);
         gain.gain.exponentialRampToValueAtTime(0.01, t + len);
         osc.start(t); mod.start(t); osc.stop(t + len); mod.stop(t + len);
@@ -1469,7 +1492,7 @@ function startGame() {
     gameSpeed = 0; targetGameSpeed = 1.0; isResuming = true; resumeFrame = 0; isPaused = false;
     shopOverlay.style.display = 'none'; gameState = 'PLAYING';
     updateVolumeSliderVisibility();
-    AudioSys.playSound('boost');
+    AudioSys.playSound('boost', { x: player.x });
 }
 function takePlayerDamage(amount) {
     // 1. Tutorial "God Mode"
@@ -1477,7 +1500,7 @@ function takePlayerDamage(amount) {
         // Still give feedback (shake + sound + iframes) so they know they would have taken damage
         player.iframe = player.iframeDuration;
         shakeIntensity = 15;
-        AudioSys.playSound('player_hit', { hpRatio: 1.0 });
+        AudioSys.playSound('player_hit', { hpRatio: 1.0, x: player.x });
         // Return early so no HP is lost
         return;
     }
@@ -1491,7 +1514,7 @@ function takePlayerDamage(amount) {
 
     // Feedback
     shakeIntensity = 15;
-    AudioSys.playSound('player_hit', { hpRatio: player.hp / player.maxHp });
+    AudioSys.playSound('player_hit', { hpRatio: player.hp / player.maxHp, x: player.x });
 
     // 3. Death Check
     if (player.hp <= 0) endGame();
@@ -1504,7 +1527,7 @@ function addXp(amount) {
     const thresholds = [0.25, 0.5, 0.75];
     for (const thresh of thresholds) {
         if (oldProgress < thresh && currentXp / xpToNextLevel >= thresh) {
-            AudioSys.playSound('xp_threshold', { threshold: thresh });
+            AudioSys.playSound('xp_threshold', { threshold: thresh, x: player.x });
         }
     }
 
@@ -1513,7 +1536,7 @@ function addXp(amount) {
         level++;
         xpToNextLevel = Math.floor(xpToNextLevel * 1.1);
         pendingUpgrades++;
-        AudioSys.playSound('xp_threshold', { threshold: 1.0 });  // Level up shwip
+        AudioSys.playSound('xp_threshold', { threshold: 1.0, x: player.x });  // Level up shwip
     }
     xpBar.style.width = `${Math.min(100, (currentXp / xpToNextLevel) * 100)}%`;
     lvlEl.innerText = `LVL ${level}`;
@@ -1640,7 +1663,7 @@ function spawnUpgradeZones() {
     const rerollPos = findZonePosition(upgradeZones);
     upgradeZones.push({ x: rerollPos.x, y: rerollPos.y, upgrade: null, isReroll: true, dwellTime: getRerollDwellTime(), dwellProgress: 0, active: false });
     zonesActive = true; zoneSpawnTimer = ZONE_SPAWN_DELAY; upgradeSlowTimer = UPGRADE_SLOW_DURATION;
-    AudioSys.playSound('zone_spawn');
+    AudioSys.playSound('zone_spawn', { x: player.x });
 }
 
 function rerollZones() {
@@ -1652,7 +1675,7 @@ function rerollZones() {
     }
     const rerollPos = findZonePosition(upgradeZones);
     upgradeZones.push({ x: rerollPos.x, y: rerollPos.y, upgrade: null, isReroll: true, dwellTime: getRerollDwellTime(), dwellProgress: 0, active: true });
-    AudioSys.playSound('zone_spawn');
+    AudioSys.playSound('zone_spawn', { x: player.x });
 }
 
 function applyUpgrade(upgrade) {
@@ -1662,7 +1685,7 @@ function applyUpgrade(upgrade) {
     if (upgrade.id === 'rate') AudioSys.updateTempo(1.05);
     if (upgrade.id === 'speed') player.speed *= 1.2;
     if (upgrade.id === 'bulletSize') player.bulletSize *= 1.2;
-    if (upgrade.id === 'health') { AudioSys.playSound('heal', { hpRatio: player.hp / player.maxHp }); player.maxHp++; player.hp = player.maxHp; hpEl.innerText = player.hp; }
+    if (upgrade.id === 'health') { AudioSys.playSound('heal', { hpRatio: player.hp / player.maxHp, x: player.x }); player.maxHp++; player.hp = player.maxHp; hpEl.innerText = player.hp; }
     if (upgrade.id === 'magnet') player.magnetRange *= 1.5;
     if (upgrade.id === 'repulsor') player.repulsorLevel++;
     if (upgrade.id === 'damage') { player.projectileDamage++; updateBottomLeftStats(); }
@@ -1685,7 +1708,7 @@ function applyUpgrade(upgrade) {
     if (upgrade.id === 'salvage') player.salvageBonus += 0.15;
     if (upgrade.id === 'xp_boost') player.xpMultiplier *= 1.1;
     showUpgradeNotification(upgrade.name);
-    if (upgrade.id !== 'health') AudioSys.playSound('upgrade_select');
+    if (upgrade.id !== 'health') AudioSys.playSound('upgrade_select', { x: player.x });
 }
 
 function showUpgradeNotification(name) {
@@ -1724,7 +1747,7 @@ function activatePlayerShockwave() {
     shakeIntensity = 25;
 
     // Play sound
-    AudioSys.playSound('player_shockwave');
+    AudioSys.playSound('player_shockwave', { x: player.x });
 
     // Kill all normal enemies
     enemies.forEach(e => {
@@ -1733,13 +1756,20 @@ function activatePlayerShockwave() {
     });
     enemies = [];
 
-    // Damage bosses - force them to next phase
+    // Damage bosses - force them to next phase, or deal half damage to final phase
     activeBosses.forEach(boss => {
         if (boss.sides > 3) {
             // Skip to next phase by setting HP to 0 and triggering stage change
             boss.hp = 0;
             handleBossStageChange(boss);
             createExplosion(boss.x, boss.y, '#ff6600', 3);
+        } else if (boss.sides === 3) {
+            // Final phase (triangle): deal half of max HP damage
+            boss.hp -= Math.ceil(boss.maxHp / 2);
+            createExplosion(boss.x, boss.y, '#ff6600', 2);
+            if (boss.hp <= 0) {
+                handleBossStageChange(boss);
+            }
         }
     });
 
@@ -1821,11 +1851,11 @@ function spawnBoss() {
     bossLabel.innerText = bossCount > 1 ? `${bossCount}x POLYGON CLASS ${sidesThisCycle}` : `POLYGON CLASS ${sidesThisCycle}`;
     bossHpContainer.style.display = 'block';
     createExplosion(width / 2, 50, '#ff0033', 5);
-    AudioSys.playSound('boss_charge');
+    AudioSys.playSound('boss_charge', { x: width / 2 });
 }
 
 function handleBossStageChange(deadBoss) {
-    createExplosion(deadBoss.x, deadBoss.y, '#ff0033', 3); shakeIntensity = 20; AudioSys.playSound('explosion');
+    createExplosion(deadBoss.x, deadBoss.y, '#ff0033', 3); shakeIntensity = 20; AudioSys.playSound('explosion', { x: deadBoss.x });
     if (deadBoss.sides > 3) {
         if (deadBoss.flingState === 'GRABBING') {
             deadBoss.flingTargets.forEach(rock => { rock.customColor = null; rock.isBossProjectile = false; rock.mass = rock.size; });
@@ -1837,7 +1867,7 @@ function handleBossStageChange(deadBoss) {
                 rock.vx = Math.cos(fireAngle) * 18; rock.vy = Math.sin(fireAngle) * 18;
                 rock.mass = 10000; rock.isBossProjectile = true; rock.projectileTimer = 60; rock.customColor = '#ff0000';
             });
-            createExplosion(deadBoss.x, deadBoss.y, '#ff0000', 2); AudioSys.playSound('boss_fire');
+            createExplosion(deadBoss.x, deadBoss.y, '#ff0000', 2); AudioSys.playSound('boss_fire', { x: deadBoss.x });
             deadBoss.flingTargets = []; deadBoss.flingTarget = null; deadBoss.flingState = 'IDLE'; deadBoss.flingCooldown = 180;
         }
         deadBoss.sides--; deadBoss.hp = deadBoss.maxHp; deadBoss.damageAccumulator = 0;
@@ -2030,7 +2060,7 @@ function updateBoss(dt) {
                     boss.flingState = 'GRABBING'; boss.flingTargets = rocksToGrab; boss.flingTarget = rocksToGrab[0];
                     boss.invulnerable = false;  // Vulnerable once attacking
                     boss.damageAccumulator = 0; boss.flingTimer = 0; boss.grabTimer = 0;
-                    AudioSys.playSound('boss_charge');
+                    AudioSys.playSound('boss_charge', { x: boss.x });
                 }
             }
         } else if (boss.flingState === 'GRABBING') {
@@ -2063,7 +2093,7 @@ function updateBoss(dt) {
                     rock.mass = 10000; rock.isBossProjectile = true; rock.projectileTimer = 60; rock.customColor = '#ff0000';
                 });
                 boss.flingState = 'IDLE'; boss.flingCooldown = baseCooldown; boss.flingTargets = []; boss.flingTarget = null;
-                createExplosion(boss.x, boss.y, '#ff0000', 2); AudioSys.playSound('boss_fire');
+                createExplosion(boss.x, boss.y, '#ff0000', 2); AudioSys.playSound('boss_fire', { x: boss.x });
             }
         }
         // Attacks - context-based selection
@@ -2104,7 +2134,7 @@ function updateBoss(dt) {
             if (chosen === 'LASER') { boss.laserAngle = Math.atan2(player.y - boss.y, player.x - boss.x); boss.laserMidpointCaptured = false; }
             if (chosen === 'DASH') { boss.dashTargetX = player.x; boss.dashTargetY = player.y; boss.dashStartX = boss.x; boss.dashStartY = boss.y; }
             boss.invulnerable = false;  // Vulnerable once attacking
-            AudioSys.playSound('boss_charge');
+            AudioSys.playSound('boss_charge', { x: boss.x });
         }
         // Attack execution (simplified)
         if (boss.attackState === 'LASER_CHARGE') {
@@ -2124,7 +2154,7 @@ function updateBoss(dt) {
                 boss.attackTimer = 45;
                 boss.laserSweepStart = boss.laserAngle;
                 boss.laserSweepEnd = boss.laserSweepStart + boss.laserSweepDir * (Math.PI / 4);  // 45 degrees
-                AudioSys.playSound('boss_fire');
+                AudioSys.playSound('boss_fire', { x: boss.x });
             }
         } else if (boss.attackState === 'LASER_FIRE') {
             boss.attackTimer -= ts;
@@ -2140,7 +2170,7 @@ function updateBoss(dt) {
             if (boss.attackTimer <= 0) { boss.attackState = 'NONE'; boss.attackCooldown = 240 + Math.random() * 120; }
         } else if (boss.attackState === 'SHOCKWAVE_CHARGE') {
             boss.attackTimer -= ts;
-            if (boss.attackTimer <= 0) { boss.attackState = 'SHOCKWAVE_FIRE'; boss.attackTimer = 30; boss.shockwaveRadius = boss.radius; AudioSys.playSound('boss_fire'); shakeIntensity = 15; }
+            if (boss.attackTimer <= 0) { boss.attackState = 'SHOCKWAVE_FIRE'; boss.attackTimer = 30; boss.shockwaveRadius = boss.radius; AudioSys.playSound('boss_fire', { x: boss.x }); shakeIntensity = 15; }
         } else if (boss.attackState === 'SHOCKWAVE_FIRE') {
             boss.attackTimer -= ts; boss.shockwaveRadius += (400 - boss.radius) / 30 * ts;
             asteroids.forEach(rock => { const dist = Math.hypot(rock.x - boss.x, rock.y - boss.y); if (dist < boss.shockwaveRadius + rock.size && dist > boss.shockwaveRadius - 50) { const pushAngle = Math.atan2(rock.y - boss.y, rock.x - boss.x); rock.vx += Math.cos(pushAngle) * 8; rock.vy += Math.sin(pushAngle) * 8; } });
@@ -2153,7 +2183,7 @@ function updateBoss(dt) {
             if (boss.attackTimer <= 0) { boss.attackState = 'NONE'; boss.attackCooldown = 200 + Math.random() * 100; }
         } else if (boss.attackState === 'DASH_TELEGRAPH') {
             boss.attackTimer -= ts;
-            if (boss.attackTimer <= 0) { boss.attackState = 'DASH_ACTIVE'; boss.attackTimer = 15; AudioSys.playSound('boost'); }
+            if (boss.attackTimer <= 0) { boss.attackState = 'DASH_ACTIVE'; boss.attackTimer = 15; AudioSys.playSound('boost', { x: boss.x }); }
         } else if (boss.attackState === 'DASH_ACTIVE') {
             boss.attackTimer -= ts;
             const dashProgress = 1 - Math.pow(1 - (1 - boss.attackTimer / 15), 2);
@@ -2177,7 +2207,7 @@ function updateBoss(dt) {
                 } else {
                     boss.hp -= p.damage; boss.damageAccumulator += p.damage; p.life = 0;
                     if (boss.hp <= 0) handleBossStageChange(boss);
-                    boss.iframe = 5; AudioSys.playSound('hit');
+                    boss.iframe = 5; AudioSys.playSound('hit', { x: boss.x });
                 }
             }
         });
@@ -2326,13 +2356,13 @@ function killEnemy(e) {
         if (player.hp < player.maxHp) {
             player.hp++;
             hpEl.innerText = player.hp;
-            AudioSys.playSound('heal', { hpRatio: player.hp / player.maxHp });
+            AudioSys.playSound('heal', { hpRatio: player.hp / player.maxHp, x: player.x });
             createExplosion(player.x, player.y, '#00ff00', 0.5);
         } else {
             console.log('Siphon would have fired but hp is full:', player.hp, '/', player.maxHp);
         }
     }
-    AudioSys.playSound('explosion');
+    AudioSys.playSound('explosion', { x: e.x });
     if (e.type === 'splitter' && e.splitCount > 0) {
         for (let i = 0; i < e.splitCount; i++) {
             const angle = (i / e.splitCount) * Math.PI * 2;
@@ -2614,7 +2644,7 @@ function update(dt) {
         if (!rock.isBossProjectile) { const s = Math.hypot(rock.vx, rock.vy); if (s > 8) { rock.vx = (rock.vx/s)*8; rock.vy = (rock.vy/s)*8; } }
     });
     for (let i=0; i<asteroids.length; i++) for (let j=i+1; j<asteroids.length; j++) resolveElasticCollision(asteroids[i], asteroids[j]);
-    
+
     // Calculate asteroid field agitation for audio feedback
     if (asteroids.length > 0) {
         let fieldEnergy = 0;
@@ -2622,7 +2652,7 @@ function update(dt) {
         const baselineEnergy = asteroids.length * 1.5;  // Average spawn velocity ~1.5
         AudioSys.fieldAgitation = fieldEnergy / baselineEnergy;
     }
-    
+
     asteroids.forEach(rock => {
         const col = checkCircleCollision(player, rock);
         if (col.collided) {
@@ -2653,7 +2683,7 @@ function update(dt) {
                 projectiles.push({ x:player.x, y:player.y, vx:Math.cos(backA+spr)*player.projectileSpeed*0.8, vy:Math.sin(backA+spr)*player.projectileSpeed*0.8, size:player.bulletSize*0.8, damage:player.projectileDamage, life:Math.floor((width*1.5*player.projectileRange)/player.projectileSpeed), pierceLeft: player.pierceCount });
             }
         }
-        shakeIntensity = 0 + cnt*0.1; AudioSys.playSound('shoot');
+        shakeIntensity = 0 + cnt*0.1; AudioSys.playSound('shoot', { x: player.x });
     }
     // Projectiles
     projectiles.forEach((p, i) => {
@@ -2757,7 +2787,7 @@ function update(dt) {
             }
             if (Math.hypot(player.x-d.x, player.y-d.y) < player.size+d.size) {
                 if(d.type==='xp') addXp(d.value); else { runCurrency+=d.value; runCurrencyEl.innerText=runCurrency; }
-                AudioSys.playSound(d.type === 'core' ? 'core_collect' : 'collect', { xpRatio: currentXp / xpToNextLevel });
+                AudioSys.playSound(d.type === 'core' ? 'core_collect' : 'collect', { xpRatio: currentXp / xpToNextLevel, x: player.x });
                 drops.splice(i, 1);
             }
         }
@@ -2845,7 +2875,7 @@ function update(dt) {
                     }
                     asteroids.forEach(rock => { const dist = Math.hypot(rock.x - e.x, rock.y - e.y); if (dist < explosionRadius + rock.size) { const pushAng = Math.atan2(rock.y - e.y, rock.x - e.x); rock.vx += Math.cos(pushAng) * 10; rock.vy += Math.sin(pushAng) * 10; } });
                     explosionRings.push({ x: e.x, y: e.y, radius: 0, maxRadius: explosionRadius, life: 20, color: '#ffff00' });
-                    createExplosion(e.x, e.y, '#ffff00', 3); AudioSys.playSound('explosion'); shakeIntensity = 15;
+                    createExplosion(e.x, e.y, '#ffff00', 3); AudioSys.playSound('explosion', { x: e.x }); shakeIntensity = 15;
                     e.hasExploded = true; e.hp = 0;
                 }
             }
@@ -2914,7 +2944,7 @@ function update(dt) {
             const c = checkCircleCollision(e, r);
             if(c.collided) {
                 if(e.type==='tank' || e.type==='bomber' || e.type==='shielded' || e.type==='tandem') { const a=Math.atan2(r.y-e.y, r.x-e.x); r.vx=Math.cos(a)*8; r.vy=Math.sin(a)*8; createExplosion(e.x, e.y, e.color, 0.5); }
-                else { e.x+=c.pushX; e.y+=c.pushY; if(Math.hypot(r.vx, r.vy)>1.5) { e.hp=0; createExplosion(e.x, e.y, e.color, 1.5); score+=50; shakeIntensity=5; AudioSys.playSound('explosion'); } }
+                else { e.x+=c.pushX; e.y+=c.pushY; if(Math.hypot(r.vx, r.vy)>1.5) { e.hp=0; createExplosion(e.x, e.y, e.color, 1.5); score+=50; shakeIntensity=5; AudioSys.playSound('explosion', { x: e.x }); } }
             }
         });
         if(Math.hypot(player.x-e.x, player.y-e.y) < (player.size+e.size)/2 && player.iframe<=0 && !player.boostActive) {
@@ -2931,7 +2961,7 @@ function update(dt) {
                 while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                 if (Math.abs(angleDiff) < Math.PI / 2 && Math.hypot(p.x-e.x, p.y-e.y) < (e.size+p.size)/2) {
                     projectiles.splice(pi, 1); particles.push({x:p.x, y:p.y, vx:(Math.random()-0.5)*5, vy:(Math.random()-0.5)*5, life:10, color:'#00aaff', size:3});
-                    AudioSys.playSound('hit'); return;
+                    AudioSys.playSound('hit', { x: e.x }); return;
                 }
             }
             if(Math.hypot(p.x-e.x, p.y-e.y) < (e.size+p.size)/2) {
@@ -2950,9 +2980,9 @@ function update(dt) {
                             const ang = (j / 8) * Math.PI * 2;
                             particles.push({x: e.x + Math.cos(ang) * e.size, y: e.y + Math.sin(ang) * e.size, vx: Math.cos(ang) * 4, vy: Math.sin(ang) * 4, life: 20, color: '#ffff00', size: 4});
                         }
-                        AudioSys.playSound('explosion');
+                        AudioSys.playSound('explosion', { x: e.x });
                     } else {
-                        AudioSys.playSound('hit');
+                        AudioSys.playSound('hit', { x: e.x });
                     }
                     return;
                 }
@@ -2962,7 +2992,7 @@ function update(dt) {
                 else { projectiles.splice(pi, 1); }
                 particles.push({x:p.x, y:p.y, vx:(Math.random()-0.5)*5, vy:(Math.random()-0.5)*5, life:10, color:'#fff', size:2});
                 if(e.hp<=0) { killEnemy(e); score+=10; scoreEl.innerText=score; createExplosion(e.x, e.y, e.color); shakeIntensity=4; }
-                else AudioSys.playSound('hit');
+                else AudioSys.playSound('hit', { x: e.x });
             }
         });
         if(e.hp<=0 && enemies.includes(e)) { killEnemy(e); scoreEl.innerText=score; }
@@ -2978,7 +3008,7 @@ function update(dt) {
     if (shakeIntensity>0) shakeIntensity *= Math.pow(0.9, dt);
     if (lowHpPulse > 0) lowHpPulse *= Math.pow(0.92, dt);
     frames += dt;
-    
+
     // Periodic save every ~30 seconds (1800 frames) to protect against crashes/early exits
     if (frames - lastPeriodicSave > 1800 && runCurrency > committedRunCores) {
         const newCores = runCurrency - committedRunCores;
