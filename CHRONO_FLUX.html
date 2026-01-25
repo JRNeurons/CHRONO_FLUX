@@ -1134,7 +1134,10 @@ let player = {
     aftTurretLevel: 0,     // Number of backward projectiles
     siphonChance: 0,       // Chance to heal on kill (0.01 per level)
     salvageBonus: 0,       // Bonus core drop chance (0.15 per level)
-    projectileRange: 1.0   // Multiplier for projectile lifetime/distance
+    projectileRange: 1.0,  // Multiplier for projectile lifetime/distance
+    // Visual feedback timers
+    damageFlash: 0,        // Flash red when damaged (frames remaining)
+    healFlash: 0           // Flash green when healed (frames remaining)
 };
 let spawnTimers = { enemy: 0 };
 const mouse = { x: 0, y: 0, down: false, button: 0 };  // button: 0=left, 2=right
@@ -1462,6 +1465,8 @@ function startGame() {
     player.salvageBonus = 0;
     player.projectileRange = 1.0;
     player.rotation = 0;
+    player.damageFlash = 0;   // Reset visual feedback timers
+    player.healFlash = 0;
     score = 0; level = 1; currentXp = 0; xpToNextLevel = 200; runCurrency = 0; frames = 0; gameTime = 0;
     committedRunCores = 0; lastPeriodicSave = 0;  // Reset periodic save tracking
     chronosEnergy = player.chronosMax; spawnTimers.enemy = 0;
@@ -1508,6 +1513,7 @@ function takePlayerDamage(amount) {
     // 2. Normal Damage Logic
     player.hp -= amount;
     player.iframe = player.iframeDuration;
+    player.damageFlash = 15;  // Flash red for 15 frames (~0.25 seconds at 60fps)
 
     // UI Updates
     hpEl.innerText = player.hp;
@@ -1685,7 +1691,7 @@ function applyUpgrade(upgrade) {
     if (upgrade.id === 'rate') AudioSys.updateTempo(1.05);
     if (upgrade.id === 'speed') player.speed *= 1.2;
     if (upgrade.id === 'bulletSize') player.bulletSize *= 1.2;
-    if (upgrade.id === 'health') { AudioSys.playSound('heal', { hpRatio: player.hp / player.maxHp, x: player.x }); player.maxHp++; player.hp = player.maxHp; hpEl.innerText = player.hp; }
+    if (upgrade.id === 'health') { AudioSys.playSound('heal', { hpRatio: player.hp / player.maxHp, x: player.x }); player.maxHp++; player.hp = player.maxHp; player.healFlash = 15; hpEl.innerText = player.hp; }
     if (upgrade.id === 'magnet') player.magnetRange *= 1.5;
     if (upgrade.id === 'repulsor') player.repulsorLevel++;
     if (upgrade.id === 'damage') { player.projectileDamage++; updateBottomLeftStats(); }
@@ -2355,6 +2361,7 @@ function killEnemy(e) {
     if (player.siphonChance > 0 && Math.random() < player.siphonChance) {
         if (player.hp < player.maxHp) {
             player.hp++;
+            player.healFlash = 15;  // Flash green for 15 frames
             hpEl.innerText = player.hp;
             AudioSys.playSound('heal', { hpRatio: player.hp / player.maxHp, x: player.x });
             createExplosion(player.x, player.y, '#00ff00', 0.5);
@@ -2371,7 +2378,7 @@ function killEnemy(e) {
         createExplosion(e.x, e.y, '#00ffaa', 2);
     }
     if (e.type === 'bomber' && !e.hasExploded) {
-        const explosionRadius = 100;
+        const explosionRadius = 250;
         if (Math.hypot(player.x - e.x, player.y - e.y) < explosionRadius && player.iframe <= 0 && !player.boostActive) {
             takePlayerDamage(1);
             createExplosion(player.x, player.y, '#fff', 2);
@@ -3005,6 +3012,9 @@ function update(dt) {
         if (ring.life <= 0) explosionRings.splice(i, 1);
     });
     if (player.iframe>0) player.iframe-=ts;
+    // Decrement visual feedback flash timers
+    if (player.damageFlash > 0) player.damageFlash -= ts;
+    if (player.healFlash > 0) player.healFlash -= ts;
     if (shakeIntensity>0) shakeIntensity *= Math.pow(0.9, dt);
     if (lowHpPulse > 0) lowHpPulse *= Math.pow(0.92, dt);
     frames += dt;
@@ -3187,10 +3197,52 @@ function draw() {
     // Player
     if (player.iframe%10 < 5 || player.iframe > 0 || player.boostActive) {
         ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(player.rotation);
-        ctx.fillStyle = player.color; ctx.shadowBlur = 15; ctx.shadowColor = player.color;
+
+        // Determine ship color based on flash state
+        let shipColor = player.color;
+        let glowColor = player.color;
+
+        // Damage flash (red) takes priority over heal flash
+        if (player.damageFlash > 0) {
+            shipColor = '#ff3333';
+            glowColor = '#ff3333';
+        } else if (player.healFlash > 0) {
+            shipColor = '#33ff33';
+            glowColor = '#33ff33';
+        }
+
+        ctx.fillStyle = shipColor;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = glowColor;
+
         if (player.boostActive) ctx.globalAlpha = 0.3; else if (player.iframe > 0) ctx.globalAlpha = 0.5;
         ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-10, -10); ctx.lineTo(-5, 0); ctx.lineTo(-10, 10); ctx.closePath(); ctx.fill();
         ctx.restore();
+    }
+
+    // Draw glowing aura for damage/heal flashes (drawn after ship so it's always visible)
+    if (player.damageFlash > 0 || player.healFlash > 0) {
+        const flashIntensity = Math.max(player.damageFlash, player.healFlash) / 15; // 0 to 1
+        const auraColor = player.damageFlash > 0 ? '#ff3333' : '#33ff33';
+        const auraSize = 35 + (1 - flashIntensity) * 20; // Expands as it fades
+
+        // Create radial gradient for glowing aura
+        const gradient = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, auraSize);
+        gradient.addColorStop(0, `rgba(${player.damageFlash > 0 ? '255, 51, 51' : '51, 255, 51'}, ${flashIntensity * 0.6})`);
+        gradient.addColorStop(0.5, `rgba(${player.damageFlash > 0 ? '255, 51, 51' : '51, 255, 51'}, ${flashIntensity * 0.3})`);
+        gradient.addColorStop(1, `rgba(${player.damageFlash > 0 ? '255, 51, 51' : '51, 255, 51'}, 0)`);
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, auraSize, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Add a pulsing ring effect for extra visual impact
+        ctx.strokeStyle = `rgba(${player.damageFlash > 0 ? '255, 51, 51' : '51, 255, 51'}, ${flashIntensity * 0.8})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, 20 + (1 - flashIntensity) * 15, 0, Math.PI * 2);
+        ctx.stroke();
     }
     ctx.globalAlpha = 1.0;
     // Enemies

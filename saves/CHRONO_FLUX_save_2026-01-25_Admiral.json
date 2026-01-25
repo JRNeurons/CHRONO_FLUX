@@ -1,0 +1,37 @@
+{
+  "version": "CHRONO_FLUX",
+  "timestamp": "2026-01-25T17:46:44.165Z",
+  "data": {
+    "currency": 4355,
+    "upgrades": {
+      "maxHp": 7,
+      "magnet": 31,
+      "fireRate": 1,
+      "force": 0,
+      "chronosCap": 0,
+      "boostCap": 20,
+      "boostRegen": 33,
+      "startDamage": 8,
+      "xpBonus": 3,
+      "startNova": 0,
+      "bulletSize": null
+    },
+    "lifetimeCores": 55663,
+    "decagonDefeats": {
+      "easy": true,
+      "medium": false,
+      "hard": false,
+      "extreme": true,
+      "hell": false
+    },
+    "unlockedDifficulties": {
+      "easy": true,
+      "medium": true,
+      "hard": true,
+      "extreme": true,
+      "hell": true
+    },
+    "bossRushUnlocked": false,
+    "gameCompleted": false
+  }
+}
