@@ -1091,12 +1091,12 @@ const VITAL_UPGRADE_IDS = ['multishot', 'health', 'damage'];5
 
 const SHOP_UPGRADES = [
     { id: 'maxHp', name: 'Reinforced Hull', desc: 'Start with +1 Max HP.', baseCost: 100, costMult: 2 },
-    { id: 'magnet', name: 'Scavenger Scanner', desc: 'Start with +20% Magnet Range.', baseCost: 50, costMult: 1.5 },
+    { id: 'magnet', name: 'Scavenger Scanner', desc: 'Start with +20% Magnet Range.', baseCost: 70, costMult: 2.2 },
     { id: 'fireRate', name: 'Trigger Mechanism', desc: 'Start with +5% Fire Rate.', baseCost: 75, costMult: 1.5 },
     { id: 'bulletSize', name: 'Widebore Barrel', desc: 'Start with +10% Bullet Size.', baseCost: 60, costMult: 1.5 },
     { id: 'chronosCap', name: 'Chronos Battery', desc: 'Start with +20% Time Energy.', baseCost: 150, costMult: 2 },
-    { id: 'boostCap', name: 'Afterburner Tank', desc: 'Start with +25% Boost Capacity.', baseCost: 80, costMult: 1.8 },
-    { id: 'boostRegen', name: 'Fuel Recycler', desc: 'Start with +15% Boost Regen.', baseCost: 60, costMult: 1.6 },
+    { id: 'boostCap', name: 'Afterburner Tank', desc: 'Start with +25% Boost Capacity.', baseCost: 100, costMult: 2.4 },
+    { id: 'boostRegen', name: 'Fuel Recycler', desc: 'Start with +15% Boost Regen.', baseCost: 80, costMult: 2.4 },
     { id: 'startDamage', name: 'Loaded Rounds', desc: 'Start with +1 Damage.', baseCost: 200, costMult: 2.5 },
     { id: 'xpBonus', name: 'Neural Link', desc: '+10% XP from all sources.', baseCost: 120, costMult: 2 },
     { id: 'startNova', name: 'Nova Capacitor', desc: 'Start with +1 Nova charge.', baseCost: 10000, costMult: 2.5 }
@@ -1104,7 +1104,7 @@ const SHOP_UPGRADES = [
 
 // Diminishing multiplier cost calculation
 // Each level's multiplier decays toward 1, creating a soft cap on costs
-const COST_DECAY_RATE = 0.7;  // Multiplier loses 30% of its "extra" each level
+const COST_DECAY_RATE = 0.85;  // Faster decay = stronger soft cap after reaching high costs
 
 function getUpgradeCost(item, level) {
     // Level 0 means buying the first upgrade, cost is just baseCost
